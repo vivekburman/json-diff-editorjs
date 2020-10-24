@@ -4,8 +4,8 @@
 export default class JSONDiff {
   
   constructor(oldObj, newObj) {
-    this.oldObj = oldObj || oldJSONData;
-    this.newObj = newObj || newJSONData;
+    this.oldObj = oldObj;
+    this.newObj = newObj;
     this.jsonPatch = [];  
   }
 
@@ -82,6 +82,8 @@ export default class JSONDiff {
         }
       }
     }
+    this.oldObj = {};
+    this.newObj = {};
   }
   comparisonOperation(a, b) {
     if (!a || !b) {
@@ -119,26 +121,26 @@ export default class JSONDiff {
     }
   }
   modCalc(x, y) {
-    return ((x % y) + y) % y;
+    return (x + y) % y;
   }
   forwardShortestEdit(box, vForward, vBackward, i, oldArr, newArr) {
     for (var k = i; k >= -i; k-=2) {
       let c = k - box.delta;
       let px, x;
-      if (k == -i || (k != i && vForward[this.modCalc(k - 1, vForward.length - 1)] < vForward[this.modCalc(k + 1, vForward.length - 1)])) { // this is wrong
-        px = x = vForward[this.modCalc(k + 1, vForward.length - 1)]
+      if (k == -i || (k != i && vForward[this.modCalc(k - 1, vForward.length)] < vForward[this.modCalc(k + 1, vForward.length)])) {
+        px = x = vForward[this.modCalc(k + 1, vForward.length)]
       } else {
-        px = vForward[this.modCalc(k - 1, vForward.length - 1)];
+        px = vForward[this.modCalc(k - 1, vForward.length)];
         x = px + 1;
       }
       let y = box.top + (x - box.left) - k;
       let py = (i == 0 || x != px) ? y : y - 1;
-      while (x < box.right && y < box.bottom && this.comparisonOperation(oldArr[this.modCalc(x, oldArr.length - 1)], newArr[this.modCalc(y, newArr.length - 1)])) {
+      while (x < box.right && y < box.bottom && this.comparisonOperation(oldArr[x], newArr[y])) {
         x = x + 1;
         y = y + 1;
       }
-      vForward[this.modCalc(k, vForward.length - 1)] = x;
-      if (box.delta % 2 != 0 && c >= -(i - 1) && c <= (i - 1) && y >= vBackward[this.modCalc(c, vBackward.length - 1)]) {
+      vForward[this.modCalc(k, vForward.length)] = x;
+      if (box.delta % 2 != 0 && c >= -(i - 1) && c <= (i - 1) && y >= vBackward[this.modCalc(c, vBackward.length)]) {
         return [
           [px, py],
           [x, y]
@@ -150,20 +152,20 @@ export default class JSONDiff {
     for (var c = i; c >= -i; c-=2) {
       let k = c + box.delta;
       let py, y;
-      if (c == -i || (c != i && vBackward[this.modCalc(c - 1, vBackward.length - 1)] > vBackward[this.modCalc(c + 1, vBackward.length - 1)])) { // this is wrong
-        py = y = vBackward[this.modCalc(c + 1, vBackward.length - 1)]
+      if (c == -i || (c != i && vBackward[this.modCalc(c - 1, vBackward.length)] > vBackward[this.modCalc(c + 1, vBackward.length)])) { 
+        py = y = vBackward[this.modCalc(c + 1, vBackward.length)]
       } else {
-        py = vBackward[this.modCalc(c - 1, vBackward.length - 1)];
+        py = vBackward[this.modCalc(c - 1, vBackward.length)];
         y = py - 1;
       }
       let x = box.left + (y - box.top) + k;
-      let px = (i == 0 || x != px) ? x : x + 1;
-      while (x > box.left && y > box.top && this.comparisonOperation(oldArr[this.modCalc(x - 1, oldArr.length - 1)], newArr[this.modCalc(y - 1, newArr.length - 1)])) {
+      let px = (i == 0 || y != py) ? x : x + 1;
+      while (x > box.left && y > box.top && this.comparisonOperation(oldArr[x - 1], newArr[y - 1])) {
         x = x - 1;
         y = y - 1;
       }
-      vBackward[this.modCalc(c, vBackward.length - 1)] = y;
-      if (box.delta % 2 == 0 && c >= -i && c <= i && x <= vForward[this.modCalc(k, vForward.length - 1)]) {
+      vBackward[this.modCalc(c, vBackward.length)] = y;
+      if (box.delta % 2 == 0 && k >= -i && k <= i && x <= vForward[this.modCalc(k, vForward.length)]) {
         return [
           [x, y],
           [px, py]
@@ -203,64 +205,64 @@ export default class JSONDiff {
       ...tail || [finish]
     ];
   }
+  callbackFunc (x1, y1, x2, y2, oldArr, newArr, path_) {
+    const lastIndex = Math.max(0, this.jsonPatch.length - 1);
+    if (x1 == x2) {
+      if (typeof newArr[y1] == 'object' && !Array.isArray(newArr[y1]) && 
+        (this.jsonPatch[lastIndex]?.path == `${path_}/${y1}` 
+        && this.jsonPatch[lastIndex]?.op == 'delete')) {
+      // if there is a delete at same index and the type is object check for partial update
+          this.jsonPatch.pop();
+          this.generateObjDiff(oldArr[y1], newArr[y1], `${path_}/${y1}`);
+      } else {
+        if ((this.jsonPatch[lastIndex]?.path == `${path_}/${y1}` 
+        && this.jsonPatch[lastIndex]?.op == 'delete')) {
+          this.jsonPatch.pop();
+          this.jsonPatch.push({
+            op: 'replace',
+            path: `${path_}/${y1}`,
+            value: newArr[y1]
+          });
+        } else {
+          this.jsonPatch.push({
+            op: 'add',
+            path: `${path_}/${y1}`,
+            value: newArr[y1]
+          });
+        }
+      }
+    } else if(y1 == y2) {
+      this.jsonPatch.push({
+        op: 'delete',
+        path: `${path_}/${x1}`
+      });
+    }
+  }
   walkMiddleSnake(oldArr, newArr, path_) {
     const path = this.findPath(0, 0, oldArr.length, newArr.length, oldArr, newArr);
     if (!path || path.length == 0) return;
 
-    const callbackFunc = (x1, y1, x2, y2) => {
-      if (x1 == x2) {
-        if (typeof newArr[y1] == 'object' && !Array.isArray(newArr[y1]) && 
-          (this.jsonPatch[this.jsonPatch.length - 1].path == `${path_}/${y1}` 
-          && this.jsonPatch[this.jsonPatch.length - 1].op == 'delete')) {
-        // if there is a delete at same index and the type is object check for partial update
-            this.jsonPatch.pop();
-            this.generateObjDiff(oldArr[y1], newArr[y1], `${path_}/${y1}`);
-        } else {
-          if ((this.jsonPatch[this.jsonPatch.length - 1].path == `${path_}/${y1}` 
-          && this.jsonPatch[this.jsonPatch.length - 1].op == 'delete')) {
-            this.jsonPatch.pop();
-            this.jsonPatch.push({
-              op: 'replace',
-              path: `${path_}/${y1}`,
-              value: newArr[y1]
-            });
-          } else {
-            this.jsonPatch.push({
-              op: 'add',
-              path: `${path_}/${y1}`,
-              value: newArr[y1]
-            });
-          }
-        }
-      } else if(y1 == y2) {
-        this.jsonPatch.push({
-          op: 'delete',
-          path: `${path_}/${x1}`
-        });
-      }
-    };
-
     for(var i = 0; i < path.length - 1; i++) {
       let pair1 = path[i];
       const pair2 = path[i + 1];
-      pair1 = this.walkDiagonal(pair1, pair2, oldArr, newArr, callbackFunc);
+      pair1 = this.walkDiagonal(pair1, pair2, oldArr, newArr);
       
       const val1 = (pair2[0] - pair1[0]);
       const val2 = (pair2[1] - pair1[1]);
 
       if (val1 < val2) {
-        callbackFunc(pair1[0], pair1[1], pair1[0], pair1[1] + 1);
+        this.callbackFunc(pair1[0], pair1[1], pair1[0], pair1[1] + 1, oldArr, newArr, path_);
         pair1[1]++;
       } else if (val1 > val2) {
-        callbackFunc(pair1[0], pair1[1], pair1[0] + 1, pair1[1]);
+        this.callbackFunc(pair1[0], pair1[1], pair1[0] + 1, pair1[1], oldArr, newArr, path_);
         pair1[0]++;
       }
-      this.walkDiagonal(pair1, pair2, oldArr, newArr, callbackFunc);
+      this.walkDiagonal(pair1, pair2, oldArr, newArr);
     }
   }
-  walkDiagonal (pair1, pair2, oldArr, newArr, callbackFunc) {
+  walkDiagonal (pair1, pair2, oldArr, newArr) {
     while (pair1[0] < pair2[0] && pair1[1] < pair2[1] && this.comparisonOperation(oldArr[pair1[0]], newArr[pair1[1]])) {
-      // callbackFunc(pair1[0], pair1[1], pair1[0] + 1, pair1[1] + 1);
+      // this.callbackFunc(pair1[0], pair1[1], pair1[0] + 1, pair1[1] + 1, oldArr, newArr, path_);
       pair1[0]++;
       pair1[1]++;
     }
