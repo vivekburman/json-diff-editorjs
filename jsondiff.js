@@ -6,7 +6,8 @@ export default class JSONDiff {
   constructor(oldObj, newObj) {
     this.oldObj = oldObj;
     this.newObj = newObj;
-    this.jsonPatch = [];  
+    this.jsonPatch = [];
+    this.deletes = {};  
   }
 
   isEmpty = (obj) => {
@@ -33,12 +34,16 @@ export default class JSONDiff {
   generateArrDiff(oldArr, newArr, path) {
     this.walkMiddleSnake(oldArr, newArr, path);
   }
-
-  generateObjDiff(oldObj=this.oldObj, newObj=this.newObj, path='') {
+  setDelete(path) {
+    // make sure inserted to jsonPatch first else will be error
+    this.deletes[path] = this.jsonPatch.length - 1;
+  }
+  generateObjDiff(oldObj=this.oldObj, newObj=this.newObj, path='', pushToArr=this.jsonPatch) {
     if (this.isEmpty(oldObj)) {
-      this.jsonPatch.push({op: "add", path: "/", value: newObj});
+      pushToArr.push({op: "add", path: "/", value: newObj});
     } else if (this.isEmpty(newObj)) {
-      this.jsonPatch.push({op: "delete", path: "/"});
+      pushToArr.push({op: "delete", path: "/"});
+      this.setDelete('/');
     } else {
       const oldKeys = this.getKeys(oldObj);
       const newKeys = this.getKeys(newObj);
@@ -51,10 +56,12 @@ export default class JSONDiff {
           // 1.4. else same, then skip
   
           if (!newObj.hasOwnProperty(oldKeys[t])) {
-            this.jsonPatch.push({op: "delete", path: `${path}/${oldKeys[t]}`});
+            const _p = `${path}/${oldKeys[t]}`;
+            pushToArr.push({op: "delete", path: _p});
+            this.setDelete(_p);
           }
           else if (newObj[oldKeys[t]] != oldObj[oldKeys[t]]) {
-            this.jsonPatch.push({op: "replace", path: `${path}/${oldKeys[t]}`, value: newObj[oldKeys[t]]});
+            pushToArr.push({op: "replace", path: `${path}/${oldKeys[t]}`, value: newObj[oldKeys[t]]});
           }
         }
   
@@ -64,7 +71,10 @@ export default class JSONDiff {
           // 2.3 else recursive call
   
           if (!newObj.hasOwnProperty(oldKeys[t])) {
-            this.jsonPatch.push({op: "delete", path: `${path}/${oldKeys[t]}`});
+            const _p = `${path}/${oldKeys[t]}`;
+            pushToArr.push({op: "delete", path: _p});
+            this.setDelete(_p);
+
           } else {
             this.generateObjDiff(oldObj[oldKeys[t]], newObj[oldKeys[t]], `${path}/${oldKeys[t]}`);
           }
@@ -78,7 +88,7 @@ export default class JSONDiff {
       // 4. add all the remaining new properties to patch
       for (let t = 0; t < newKeys.length; t++) {
         if (!this.isEmpty(newObj[newKeys[t]]) && !oldObj.hasOwnProperty(newKeys[t])) {
-          this.jsonPatch.push({op: "add", path: `${path}/${newKeys[t]}`, value: newObj[newKeys[t]]});
+          pushToArr.push({op: "add", path: `${path}/${newKeys[t]}`, value: newObj[newKeys[t]]});
         }
       }
     }
@@ -206,19 +216,16 @@ export default class JSONDiff {
     ];
   }
   callbackFunc (x1, y1, x2, y2, oldArr, newArr, path_) {
-    const lastIndex = Math.max(0, this.jsonPatch.length - 1);
     if (x1 == x2) {
-      if (typeof newArr[y1] == 'object' && !Array.isArray(newArr[y1]) && 
-        (this.jsonPatch[lastIndex]?.path == `${path_}/${y1}` 
-        && this.jsonPatch[lastIndex]?.op == 'delete')) {
+      const _p = `${path_}/${y1}`;
+      if (typeof newArr[y1] == 'object' && !Array.isArray(newArr[y1]) && this.deletes.hasOwnProperty(_p)) {
       // if there is a delete at same index and the type is object check for partial update
-          this.jsonPatch.pop();
-          this.generateObjDiff(oldArr[y1], newArr[y1], `${path_}/${y1}`);
+          const arr = [];
+          this.generateObjDiff(oldArr[y1], newArr[y1], `${path_}/${y1}`, arr);
+          this.jsonPatch.splice(this.deletes[_p], 1, ...arr);
       } else {
-        if ((this.jsonPatch[lastIndex]?.path == `${path_}/${y1}` 
-        && this.jsonPatch[lastIndex]?.op == 'delete')) {
-          this.jsonPatch.pop();
-          this.jsonPatch.push({
+        if (this.deletes.hasOwnProperty(_p)) {
+          this.jsonPatch.splice(this.deletes[_p], 1, {
             op: 'replace',
             path: `${path_}/${y1}`,
             value: newArr[y1]
@@ -232,10 +239,12 @@ export default class JSONDiff {
         }
       }
     } else if(y1 == y2) {
+      const _p = `${path_}/${x1}`;
       this.jsonPatch.push({
         op: 'delete',
-        path: `${path_}/${x1}`
+        path: _p
       });
+      this.setDelete(_p);
     }
   }
   walkMiddleSnake(oldArr, newArr, path_) {
