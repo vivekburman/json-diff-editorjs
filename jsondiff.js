@@ -40,10 +40,10 @@ export default class JSONDiff {
   }
   generateObjDiff(oldObj=this.oldObj, newObj=this.newObj, path='', pushToArr=this.jsonPatch) {
     if (this.isEmpty(oldObj)) {
-      pushToArr.push({op: "add", path: "/", value: newObj});
+      pushToArr.push({op: "add", path: `${path ? path : '/'}`, value: newObj});
     } else if (this.isEmpty(newObj)) {
-      pushToArr.push({op: "delete", path: "/"});
-      this.setDelete('/');
+      pushToArr.push({op: "delete", path: `${path ? path : '/'}`});
+      this.setDelete(`${path ? path : '/'}`);
     } else {
       const oldKeys = this.getKeys(oldObj);
       const newKeys = this.getKeys(newObj);
