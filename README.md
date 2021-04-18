@@ -1,5 +1,7 @@
 # JSON Diff Algorithm for EditorJS.
 
+[Live DEMO](https://codesandbox.io/s/falling-night-r7qli?file=/src/App.js)
+
 In EditorJS on save the whole object is provided and not changes. This is a problem
 for update REST calls. As you need to pass the whole object and write into DB which is bad. 
 This repo solves it by providing on the difference generated using Myer's algorithm with linear space.
